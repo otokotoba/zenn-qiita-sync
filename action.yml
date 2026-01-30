@@ -9,11 +9,15 @@ inputs:
     description: "Root directory path"
   qiita-token:
     required: true
-    description: 'Qiita API token'
+    description: "Qiita API token"
   convert-commit-message:
     required: false
     default: "Convert Zenn articles to Qiita format"
     description: "Commit message for converting Zenn articles to Qiita format"
+  delete-commit-message:
+    required: false
+    default: "Delete Qiita articles"
+    description: "Commit message for deleting Qiita articles"
   qiitacli-commit-message:
     required: false
     default: "Updated by qiita-cli"
@@ -34,43 +38,22 @@ runs:
         files: articles/*.md
         since_last_remote_commit: true
 
-    - name: Show changed articles
-      env:
-        ANY_MODIFIED: ${{ steps.changed-articles.outputs.any_modified }}
-        ALL_MODIFIED_FILES: ${{ steps.changed-articles.outputs.all_modified_files }}
-      run: |
-        if [[ $ANY_MODIFIED = "true" ]]; then
-          echo $ALL_MODIFIED_FILES > $GITHUB_WORKSPACE/changed_files.txt
-          echo "📋 Changed articles:"
-          cat $GITHUB_WORKSPACE/changed_files.txt
-        else
-          echo "No changed articles"
-        fi
-      shell: bash
-
     - name: Install qiita-cli
-      if: steps.changed-articles.outputs.any_modified == 'true'
+      if: steps.changed-articles.outputs.any_changed == 'true'
       run: |
         npm install @qiita/qiita-cli --save-dev
       shell: bash
 
     - name: Convert Zenn articles to Qiita format
-      if: steps.changed-articles.outputs.any_modified == 'true'
+      id: convert-articles
+      if: steps.changed-articles.outputs.any_changed == 'true'
+      env:
+        ALL_CHANGED_FILES: ${{ steps.changed-articles.outputs.all_changed_files }}
       run: |
-        for file in $(cat $GITHUB_WORKSPACE/changed_files.txt); do
+        for file in ${ALL_CHANGED_FILES}; do
           filename=$(basename "$file" .md)
           echo "🚀 Convert $file to Qiita format"
-          if [[ "$file" != articles/* ]]; then
-            echo "⚠️ invalid file path: $file"
-            if [[ -f "qiita/public/$filename.md" ]]; then
-              echo "delete qiita/public/$filename.md cuz it's not included in articles/"
-              rm "qiita/public/$filename.md"
-            fi
-            continue
-          fi
-
-          if grep -q "published: true" "$file"; then
-            if [[ ! -f "qiita/public/$filename.md" ]]; then
+          if [[ ! -f "qiita/public/$filename.md" ]]; then
               echo "🌱 Create new Qiita article"
               cd ./qiita
               npx qiita new "$filename"
@@ -78,25 +61,47 @@ runs:
             fi
             echo "🚚 Convert $file to qiita/public/$filename.md"
             node ${{ github.action_path }}/dist/index.js "$file" "./qiita/public/$filename.md"
-          fi
-
         done
       shell: bash
 
     - name: Commit converted Qiita articles
-      if: steps.changed-articles.outputs.any_modified == 'true'
+      if: steps.convert-articles.outcome == 'success'
       run: |
-        rm $GITHUB_WORKSPACE/changed_files.txt
-        rm package-lock.json package.json
         git config --local user.name ${{ github.actor }}
         git config --local user.email ${{ github.actor }}@users.noreply.github.com
         git add qiita/public/*.md
-        git commit -m "${{ inputs.convert-commit-message }}"
+        git commit -m "${{ inputs.delete-commit-message }}"
+        git push
+      shell: bash
+
+    - name: Delete Qiita articles
+      id: delete-articles
+      if: steps.changed-articles.outputs.any_deleted == 'true'
+      env:
+        DELETED_FILES: ${{ steps.changed-articles.outputs.deleted_files }}
+      run: |
+        for file in ${DELETED_FILES}; do
+          filename=$(basename "$file" .md)
+          qiita_file="qiita/public/$filename.md"
+          if [[ -f "$qiita_file" ]]; then
+            echo "🗑️ Delete $qiita_file"
+            rm "$qiita_file"
+          fi
+        done
+      shell: bash
+
+    - name: Commit deleted Qiita articles
+      if: steps.delete-articles.outcome == 'success'
+      run: |
+        git config --local user.name ${{ github.actor }}
+        git config --local user.email ${{ github.actor }}@users.noreply.github.com
+        git add -u qiita/public/
+        git commit -m "${{ inputs.delete-commit-message }}"
         git push
       shell: bash
 
     - name: Publish Qiita articles
-      if: steps.changed-articles.outputs.any_modified == 'true'
+      if: steps.convert-articles.outcome == 'success'
       uses: increments/qiita-cli/actions/publish@v1
       with:
         qiita-token: ${{ inputs.qiita-token }}
