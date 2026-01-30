@@ -27,21 +27,35 @@ runs:
       with:
         node-version: '20'
 
-    - name: Get changed markdown files
-      id: files
+    - name: Get changed articles
+      id: changed-articles
+      uses: tj-actions/changed-files@v47
+      with:
+        files: articles/*.md
+        since_last_remote_commit: true
+
+    - name: Show changed articles
+      env:
+        ANY_MODIFIED: ${{ steps.changed-articles.outputs.any_modified }}
+        ALL_MODIFIED_FILES: ${{ steps.changed-articles.outputs.all_modified_files }}
       run: |
-        git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep "^articles/.*\.md$" > $GITHUB_WORKSPACE/changed_files.txt
-        echo "📋 Changed markdown files:"
-        cat $GITHUB_WORKSPACE/changed_files.txt
-      continue-on-error: true
+        if [[ $ANY_MODIFIED = "true" ]]; then
+          echo $ALL_MODIFIED_FILES > $GITHUB_WORKSPACE/changed_files.txt
+          echo "📋 Changed articles:"
+          cat $GITHUB_WORKSPACE/changed_files.txt
+        else
+          echo "No changed articles"
+        fi
       shell: bash
 
     - name: Install qiita-cli
+      if: steps.changed-articles.outputs.any_modified == 'true'
       run: |
         npm install @qiita/qiita-cli --save-dev
       shell: bash
 
     - name: Convert Zenn articles to Qiita format
+      if: steps.changed-articles.outputs.any_modified == 'true'
       run: |
         for file in $(cat $GITHUB_WORKSPACE/changed_files.txt); do
           filename=$(basename "$file" .md)
@@ -68,9 +82,9 @@ runs:
 
         done
       shell: bash
-      if: steps.files.outcome == 'success'
 
     - name: Commit converted Qiita articles
+      if: steps.changed-articles.outputs.any_modified == 'true'
       run: |
         rm $GITHUB_WORKSPACE/changed_files.txt
         rm package-lock.json package.json
@@ -80,9 +94,9 @@ runs:
         git commit -m "${{ inputs.convert-commit-message }}"
         git push
       shell: bash
-      if: steps.files.outcome == 'success'
 
     - name: Publish Qiita articles
+      if: steps.changed-articles.outputs.any_modified == 'true'
       uses: increments/qiita-cli/actions/publish@v1
       with:
         qiita-token: ${{ inputs.qiita-token }}
