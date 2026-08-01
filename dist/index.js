@@ -8086,7 +8086,7 @@ function convertFrontmatter(outputPath) {
         // Add new fields
         if (outputPath && (0, fs_1.existsSync)(outputPath)) {
             const existingData = (0, gray_matter_1.default)((0, fs_1.readFileSync)(outputPath, 'utf8')).data;
-            dataCloned.updated_at = existingData.updated_at || new Date().toISOString();
+            dataCloned.updated_at = new Date().toISOString();
             dataCloned.id = existingData.id || null;
             dataCloned.organization_url_name =
                 existingData.organization_url_name || null;

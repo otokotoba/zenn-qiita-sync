@@ -47,7 +47,7 @@ describe('convertFrontmatter', () => {
     expect(content.trim()).toBe('# Hello')
   })
 
-  it('should preserve existing updated_at, id, and organization_url_name if outputPath exists', () => {
+  it('should set new updated_at and preserve existing id, and organization_url_name if outputPath exists', () => {
     const input = `---\nemoji: "🚀"\ntitle: "Test Title"\npublished: true\ntopics:\n  - "javascript"\n---\n# Hello\n`
     const existingContent = `---\nupdated_at: "2022-01-01T00:00:00.000Z"\nid: 123\norganization_url_name: "test-org"\n---\nExisting content\n`
     const outputPath = '/path/to/existing.md'
@@ -59,8 +59,7 @@ describe('convertFrontmatter', () => {
     const [frontmatter] = converted.split('---\n').filter(Boolean)
     const data = yaml.load(frontmatter) as any
 
-    // updated_at は文字列として比較
-    expect(new realDate(data.updated_at).toISOString()).toBe('2022-01-01T00:00:00.000Z')
+    expect(data.updated_at).toBe(mockDate)
     expect(data.id).toBe(123)
     expect(data.organization_url_name).toBe('test-org')
   })
